@@ -107,16 +107,16 @@ def estimate_radii(landmarks, w, h):
         blended = (raw + ratio * 100 * eye_scale) / 2
         return max(int(blended), 10)
     return {
-        "r_upper_arm" : r(limb_length(landmarks, [12, 14], w, h), 0.22),
-        "r_forearm"   : r(limb_length(landmarks, [14, 16], w, h), 0.18),
-        "l_upper_arm" : r(limb_length(landmarks, [11, 13], w, h), 0.22),
-        "l_forearm"   : r(limb_length(landmarks, [13, 15], w, h), 0.18),
-        "r_thigh"     : r(limb_length(landmarks, [24, 26], w, h), 0.28),
-        "r_shin"      : r(limb_length(landmarks, [26, 28], w, h), 0.22),
-        "l_thigh"     : r(limb_length(landmarks, [23, 25], w, h), 0.28),
-        "l_shin"      : r(limb_length(landmarks, [25, 27], w, h), 0.22),
-        "body_pad"    : r(limb_length(landmarks, [11, 12], w, h), 0.30),
-        "face_radius" : int(eye_dist * 2.5),
+        "r_upper_arm" : r(limb_length(landmarks, [12, 14], w, h), 0.45), 
+        "r_forearm"   : r(limb_length(landmarks, [14, 16], w, h), 0.40), 
+        "l_upper_arm" : r(limb_length(landmarks, [11, 13], w, h), 0.45), 
+        "l_forearm"   : r(limb_length(landmarks, [13, 15], w, h), 0.40),  
+        "r_thigh"     : r(limb_length(landmarks, [24, 26], w, h), 0.55), 
+        "r_shin"      : r(limb_length(landmarks, [26, 28], w, h), 0.45),  
+        "l_thigh"     : r(limb_length(landmarks, [23, 25], w, h), 0.55),  
+        "l_shin"      : r(limb_length(landmarks, [25, 27], w, h), 0.45), 
+        "body_pad"    : r(limb_length(landmarks, [11, 12], w, h), 0.65),  
+        "face_radius" : int(eye_dist * 2.5),                               
         "face_center" : get_pt(landmarks, 0, w, h).astype(int),
     }
 def make_face_mask(radii, shape):
@@ -158,64 +158,93 @@ def combine_masks(mask_list, shape):
     for m in mask_list:
         combined = cv2.bitwise_or(combined, m)
     return combined
+
+
 def draw_pipe_outline(img, p1, p2, radius, color, alpha=0.18):
-    p1 = np.array(p1, dtype=np.float64)
-    p2 = np.array(p2, dtype=np.float64)
-    direction = p2 - p1
-    length    = np.linalg.norm(direction)
-    if length < 1:
-        return
-    perp      = np.array([-direction[1], direction[0]]) / length
-    angle_deg = np.degrees(np.arctan2(direction[1], direction[0]))
-    c1 = (p1 + perp * radius).astype(int)
-    c2 = (p1 - perp * radius).astype(int)
-    c3 = (p2 - perp * radius).astype(int)
-    c4 = (p2 + perp * radius).astype(int)
-    box = np.array([c1, c2, c3, c4])
-    overlay = img.copy()
-    cv2.fillPoly(overlay, [box], color)
-    cv2.ellipse(overlay, tuple(p1.astype(int)), (radius, radius), angle_deg,  90, 270, color, -1)
-    cv2.ellipse(overlay, tuple(p2.astype(int)), (radius, radius), angle_deg, -90,  90, color, -1)
-    cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
-    cv2.polylines(img, [box], isClosed=False, color=color, thickness=2)
-    cv2.ellipse(img, tuple(p1.astype(int)), (radius, radius), angle_deg,  90, 270, color, 2)
-    cv2.ellipse(img, tuple(p2.astype(int)), (radius, radius), angle_deg, -90,  90, color, 2)
+    pass  
+
 def draw_face_outline(img, radii, color, alpha=0.18):
-    center  = tuple(radii["face_center"])
-    radius  = radii["face_radius"]
-    overlay = img.copy()
-    cv2.circle(overlay, center, radius, color, -1)
-    cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
-    cv2.circle(img, center, radius, color, 2)
+    pass 
+
 def draw_body_outline(img, landmarks, padding, color, w, h, alpha=0.18):
-    ids  = [11, 12, 24, 23]
-    pts  = np.array([get_pt(landmarks, i, w, h) for i in ids], dtype=np.float64)
-    centroid = pts.mean(axis=0)
-    expanded = []
-    for pt in pts:
-        d = pt - centroid
-        n = np.linalg.norm(d)
-        expanded.append((pt + d / n * padding).astype(int) if n > 0 else pt.astype(int))
-    expanded = np.array(expanded, dtype=np.int32)
-    overlay  = img.copy()
-    cv2.fillPoly(overlay, [expanded], color)
-    cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
-    cv2.polylines(img, [expanded], isClosed=True, color=color, thickness=2)
-def apply_green_highlight(base_img, part_mask, seg_soft):
+    pass  
+
+def get_mask_bbox(mask):
+    """Get bounding box of a binary mask."""
+    coords = cv2.findNonZero(mask)
+    if coords is None:
+        return None
+    x, y, bw, bh = cv2.boundingRect(coords)
+    return x, y, bw, bh
+
+def draw_crosshair(img, mask, label, color):
+    """
+    Draw a rectangle outline + center dot + label
+    around the bounding box of the mask.
+    Color matches the active part.
+    """
+    bbox = get_mask_bbox(mask)
+    if bbox is None:
+        return
+
+    x, y, bw, bh = bbox
+    pad = 20
+    x1, y1 = x - pad, y - pad
+    x2, y2 = x + bw + pad, y + bh + pad
+
+   
+    ih, iw = img.shape[:2]
+    x1, y1 = max(x1, 0), max(y1, 0)
+    x2, y2 = min(x2, iw - 1), min(y2, ih - 1)
+
+    cx = (x1 + x2) // 2
+    cy = (y1 + y2) // 2
+
+    thickness = 2
+    corner_len = 30  
+    cv2.line(img, (x1, y1), (x1 + corner_len, y1), color, thickness)
+    cv2.line(img, (x1, y1), (x1, y1 + corner_len), color, thickness)
+    cv2.line(img, (x2, y1), (x2 - corner_len, y1), color, thickness)
+    cv2.line(img, (x2, y1), (x2, y1 + corner_len), color, thickness)
+    cv2.line(img, (x1, y2), (x1 + corner_len, y2), color, thickness)
+    cv2.line(img, (x1, y2), (x1, y2 - corner_len), color, thickness)
+    cv2.line(img, (x2, y2), (x2 - corner_len, y2), color, thickness)
+    cv2.line(img, (x2, y2), (x2, y2 - corner_len), color, thickness)
+
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 1)
+    cv2.addWeighted(overlay, 0.4, img, 0.6, 0, img)
+    cv2.circle(img, (cx, cy), 6, color, -1)
+    cv2.line(img, (cx - 15, cy), (cx + 15, cy), color, thickness)
+    cv2.line(img, (cx, cy - 15), (cx, cy + 15), color, thickness)
+
+    font       = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.9
+    (tw, th), _ = cv2.getTextSize(label, font, font_scale, 2)
+    lx = cx - tw // 2
+    ly = y1 - 10
+    ly = max(ly, th + 5)  
+
+    cv2.putText(img, label, (lx, ly), font, font_scale, (0, 0, 0), 4, cv2.LINE_AA)
+    cv2.putText(img, label, (lx, ly), font, font_scale, color,     2, cv2.LINE_AA)
+
+def apply_green_highlight(base_img, part_mask, seg_soft, highlight_color=NV_GREEN):
     out       = base_img.copy()
     part_norm = part_mask.astype(np.float32) / 255.0
     combined  = part_norm * seg_soft
     combined  = cv2.GaussianBlur(combined, (7, 7), 0)
     gray      = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
     green_int = np.clip(gray * 1.4 + 0.15, 0.0, 1.0)
-    for c, nv_val in enumerate(NV_GREEN):
+    for c, nv_val in enumerate(highlight_color):
         ch = out[:, :, c].astype(np.float32)
         gc = nv_val * green_int
         out[:, :, c] = np.clip(ch * (1 - combined) + gc * combined, 0, 255).astype(np.uint8)
     return out
+
 def draw_label(img, text, pos, color, scale=1.0):
     cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, (0,0,0), 4, cv2.LINE_AA)
     cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color,   2, cv2.LINE_AA)
+
 def run_pipeline(image_bgr):
     h, w = image_bgr.shape[:2]
     rgb  = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -325,11 +354,11 @@ def run_pipeline(image_bgr):
     def build_frame(part_idx):
         part  = parts[part_idx]
         frame = apply_green_highlight(image_bgr.copy(), part["mask"], seg_soft)
-        for p in parts:
-            p["draw"](frame)
-        draw_label(frame, part["name"],             (30, 60),      part["color"], scale=1.5)
-        draw_label(frame, "A=Prev  D=Next  Q=Quit", (30, h - 30), (200, 200, 200), scale=1.2)
+        draw_crosshair(frame, part["mask"], part["name"], NV_GREEN)
+        draw_label(frame, "A=Prev  D=Next  Q=Quit", (30, h - 30), (180, 180, 180), scale=0.8)
         return frame
+
+
     DISPLAY_MAX = 900
     current     = 0
     def show(frame):
